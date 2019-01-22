@@ -1,0 +1,12 @@
+fileFormatVersion: 2
+guid: 5beddf55e733424489c92958ae8b8c42
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - waveformMat: {fileID: 2100000, guid: 336786396112cc842a9ba24e81a219da, type: 2}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
