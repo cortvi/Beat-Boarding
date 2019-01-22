@@ -17,7 +17,6 @@
 
 			uniform StructuredBuffer<float4> waveform;
 			uniform float viewWidth;
-			int lol;
 
 			float4 frag (v2f_img IN) : COLOR
 			{

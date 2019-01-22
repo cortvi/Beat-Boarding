@@ -23,9 +23,9 @@ namespace BeatBoarding.Tools
 
 		private const int WaveformHeigth = 150;
 		private const float MinViewSize = 0.04f;
+		private const float MaxViewSize = 1.00f;
 		#endregion
 
-//		public override bool RequiresConstantRepaint () => true;
 		public override void OnInspectorGUI () 
 		{
 			EditorGUI.BeginChangeCheck ();
@@ -64,7 +64,7 @@ namespace BeatBoarding.Tools
 						0.001f : .01f;
 
 					viewSize += Event.current.delta.y * mul;
-					viewSize = Mathf.Clamp (viewSize, MinViewSize, 1.0f);
+					viewSize = Mathf.Clamp (viewSize, MinViewSize, MaxViewSize);
 					rebuildBuffer = true;
 				}
 
@@ -98,13 +98,13 @@ namespace BeatBoarding.Tools
 					map.bpm = (int) bpm;
 					// Re-make beat-overlay???
 				}
+			}
 
-				if (rebuildBuffer)
-				{
-					BuildBuffer ();
-					rebuildBuffer = false;
-				}
-			} 
+			if (rebuildBuffer)
+			{
+				BuildBuffer();
+				rebuildBuffer = false;
+			}
 			#endregion
 		}
 
@@ -112,7 +112,7 @@ namespace BeatBoarding.Tools
 		{
 			// Initialize stuff
 			map = target as Map;
-			viewSize = 0.2f;
+			viewSize = MaxViewSize;
 		}
 
 		private void OnDestroy () 
@@ -124,19 +124,17 @@ namespace BeatBoarding.Tools
 		#region Helpers
 		private void BuildBuffer () 
 		{
-			// Ensure a song is selected!
-			if (map.song == null) return;
+			// Ensure a song is selected & avoid rebulding when repainting
+			if (map.song == null || Event.current.type == EventType.Repaint)
+				return;
+
+			// Ensure we start on a L-channel sample
+			int offset = (int)(map.song.samples * viewPos);
+			if (offset % 2 != 0) offset++;
 
 			// Compute view limits, in sample amounts
 			int samplesAmount = (int) (map.song.samples * viewSize);
-			int samplesXpixel = (int) (samplesAmount / viewWidth);
-
-			if (viewSize >= 0.99f)
-				;
-
-			// Ensure we start on a L-channel sample
-			int offset = (int) (map.song.samples * viewPos);
-			if (offset % 2 != 0) offset++;
+			int samplesXpixel = (int) ((samplesAmount * 2) / viewWidth);
 
 			// Get actual audio data
 			float[] samples = new float[samplesAmount * 2];
@@ -144,38 +142,46 @@ namespace BeatBoarding.Tools
 
 			// Read all samples in the view 
 			var waveform = new Vector4[(int) viewWidth];
-			for (int i = 0; i != waveform.Length; ++i)
+			unchecked
 			{
-				// Combine all samples insiede each pixel column
-				int start = i * samplesXpixel;
-				int end = (i + 1) * samplesXpixel;
-
-				// Save both positive & negative values
-				float pL = 0f, nL = 0f, pR = 0f, nR = 0f;
-				for (int s = start; s < end; s += 2)
+				for (int i = 0; i != waveform.Length; ++i)
 				{
-					if (s+1 > samples.Length) break;
+					// Combine all samples insiede each pixel column
+					int start = i * samplesXpixel;
+					int end = (i + 1) * samplesXpixel;
 
-					float sL = samples[s];
-					if (sL > 0f) pL = Mathf.Max (pL, sL);
-					else		 nL = Mathf.Min (nL, sL);
+					
+					// Save both positive & negative values
+					float pL = 0f, nL = 0f, pR = 0f, nR = 0f;
+					for (int s = start; s < end; s += 2)
+					{
+						if (s + 1 > samples.Length) break;
 
-					float sR = samples[s+1];
-					if (sR > 0f) pR = Mathf.Max (pR, sR);
-					else		 nR = Mathf.Min (nR, sR);
+						float sL = samples[s];
+						if (sL > 0f) pL = (pL > sL ? pL : sL);
+						else		 nL = (nL < sL ? nL : sL);
+
+						float sR = samples[s + 1];
+						if (sR > 0f) pR = (pR > sL ? pR : sR);
+						else		 nR = (nR < sL ? nR : sR);
+					}
+
+					var a = () =>
+					{
+						v.x = pL;
+
+					};
+
+					// Write L & R channels separately
+					waveform[i].x = pL; waveform[i].z = pR;
+					waveform[i].y = nL; waveform[i].w = nR;
 				}
-
-				// Write L & R channels separately
-				waveform[i].x = pL; /* */ waveform[i].z = pR;
-				waveform[i].y = nL; /* */ waveform[i].w = nR;
 			}
-
 			// Create actual buffer
-			if (samplesBuffer == null
-			||	!samplesBuffer.IsValid ()
+			if (samplesBuffer == null || !samplesBuffer.IsValid ()
 			||	samplesBuffer.count != waveform.Length)
 			{
-				samplesBuffer?.Release ();
+				samplesBuffer?.Dispose ();
 				samplesBuffer = new ComputeBuffer (waveform.Length, 4 * sizeof (float));
 			}
 			// Feed the shader
