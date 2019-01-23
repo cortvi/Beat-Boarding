@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
 using BeatBoarding.Data;
+using System;
 
 namespace BeatBoarding.Tools 
 {
@@ -13,6 +14,8 @@ namespace BeatBoarding.Tools
 		#region Vars
 		private Map map;
 
+		private AudioSource speaker;
+
 		public Material waveformMat;
 		private ComputeBuffer samplesBuffer;
 		private bool rebuildBuffer;
@@ -20,10 +23,11 @@ namespace BeatBoarding.Tools
 		private float viewPos;
 		private float viewSize;
 		private float viewWidth;
+		private Rect viewRect;
 
 		private const int WaveformHeigth = 150;
-		private const float MinViewSize = 0.04f;
-		private const float MaxViewSize = 1.00f;
+		private const float MinViewSize = 0.01f;
+		private const float MaxViewSize = 1.0f;
 		#endregion
 
 		public override void OnInspectorGUI () 
@@ -37,15 +41,15 @@ namespace BeatBoarding.Tools
 			if (map.song != null)
 			{
 				#region Waveform visualizer
-				var rect = GUILayoutUtility.GetRect (0, WaveformHeigth, GUILayout.ExpandWidth (true));
-				if (rect.width > 1 && rect.width != viewWidth)
+				viewRect = GUILayoutUtility.GetRect (0, WaveformHeigth, GUILayout.ExpandWidth (true));
+				if (viewRect.width > 1 && viewRect.width != viewWidth)
 				{
-					waveformMat.SetFloat ("viewWidth", rect.size.x);
-					viewWidth = rect.width;
+					waveformMat.SetFloat ("viewWidth", viewRect.size.x);
+					viewWidth = viewRect.width;
 					rebuildBuffer = true;
 				}
-				Graphics.DrawTexture (rect, Texture2D.whiteTexture, waveformMat);
-				GUI.DrawTexture (rect, Texture2D.whiteTexture, 0, false, 0, Color.black, 3, 0); 
+				Graphics.DrawTexture (viewRect, Texture2D.whiteTexture, waveformMat);
+				GUI.DrawTexture (viewRect, Texture2D.whiteTexture, 0, false, 0, Color.black, 3, 0); 
 				#endregion
 
 				#region Scroll view
@@ -57,7 +61,7 @@ namespace BeatBoarding.Tools
 				}
 
 				if (Event.current.type == EventType.ScrollWheel
-				&&	rect.Contains (Event.current.mousePosition))
+				&&	viewRect.Contains (Event.current.mousePosition))
 				{
 					// Allow smoothing the zoom
 					float mul = Event.current.keyCode == KeyCode.LeftAlt ? 
@@ -74,13 +78,22 @@ namespace BeatBoarding.Tools
 			}
 
 			//TO-DO: Beat overlay
-			float beatTime = 1f / (bpm / 60f);
-			float viewTime = viewSize * map.song.length;
-			int viewBeatsAmount = Mathf.CeilToInt (viewTime * (bpm / 60f));
+			//float beatTime = 1f / (bpm / 60f);
+			//float viewTime = viewSize * map.song.length;
+			//int viewBeatsAmount = Mathf.CeilToInt (viewTime * (bpm / 60f));
+			//
+			//for (int b = 0; b != viewBeatsAmount; ++b)
+			//{
+			//
+			//}
 
-			for (int b = 0; b != viewBeatsAmount; ++b)
+			//TO-DO: Clicking utils
+			if (Event.current.type == EventType.MouseDown
+			&&	viewRect.Contains (Event.current.mousePosition))
 			{
-
+				float songFactor = (Event.current.mousePosition.x - viewRect.xMin) / viewRect.width;
+				speaker.time = (map.song.length * viewSize * songFactor) + (viewPos * map.song.length);
+				if (!speaker.isPlaying) speaker.Play ();
 			}
 
 			#region Track changes
@@ -90,7 +103,7 @@ namespace BeatBoarding.Tools
 				{
 					if (song != null) rebuildBuffer = true;
 					else samplesBuffer?.Release ();
-					map.song = song;
+					speaker.clip = map.song = song;
 				}
 
 				if (bpm != map.bpm)
@@ -99,13 +112,9 @@ namespace BeatBoarding.Tools
 					// Re-make beat-overlay???
 				}
 			}
-
-			if (rebuildBuffer)
-			{
-				BuildBuffer();
-				rebuildBuffer = false;
-			}
 			#endregion
+
+			BuildBuffer();
 		}
 
 		private void Awake () 
@@ -113,20 +122,28 @@ namespace BeatBoarding.Tools
 			// Initialize stuff
 			map = target as Map;
 			viewSize = MaxViewSize;
+
+			// Generate audio speaker
+			speaker = new GameObject(name, typeof(AudioSource)).GetComponent<AudioSource>();
+			speaker.hideFlags = HideFlags.HideAndDontSave;
+			speaker.clip = map.song;
 		}
 
 		private void OnDestroy () 
 		{
 			// Release resources
 			samplesBuffer?.Release ();
+			DestroyImmediate (speaker);
 		}
 
 		#region Helpers
 		private void BuildBuffer () 
 		{
 			// Ensure a song is selected & avoid rebulding when repainting
-			if (map.song == null || Event.current.type == EventType.Repaint)
-				return;
+			if (map.song == null || Event.current.type == EventType.Repaint) return;
+			// Pass only if demanded rebuilding or if it's null
+			if (!rebuildBuffer && samplesBuffer != null) return;
+			if (viewWidth < 1f) return;
 
 			// Ensure we start on a L-channel sample
 			int offset = (int)(map.song.samples * viewPos);
@@ -140,42 +157,60 @@ namespace BeatBoarding.Tools
 			float[] samples = new float[samplesAmount * 2];
 			map.song.GetData (samples, offset);
 
-			// Read all samples in the view 
+			#error Do no use viewidt! Insted use a fixed column value, and lerp visually in shader
 			var waveform = new Vector4[(int) viewWidth];
 			unchecked
 			{
+				// Skip samples based on amount of them to allow basic performance
+				int skipMul = (int) (2d * (samplesAmount / 44100));
+
+				for (int s = 0; s < samples.Length; s += 2)
+				{
+					if (s + 1 >= samples.Length) break;
+					var col = waveform[0];
+
+					float sL = samples[s];
+					if (sL > 0f) col.x = (col.x > sL ? col.x : sL);
+					else		 col.y = (col.y < sL ? col.y : sL);
+						
+					float sR = samples[s + 1];
+					if (sR > 0f) col.z = (col.z > sL ? col.z : sR);
+					else		 col.w = (col.w < sL ? col.w : sR);
+				}
+
+
+				/*
+				// Read all samples in the view 
 				for (int i = 0; i != waveform.Length; ++i)
 				{
 					// Combine all samples insiede each pixel column
 					int start = i * samplesXpixel;
 					int end = (i + 1) * samplesXpixel;
 
-					
-					// Save both positive & negative values
+					// Save both R/L positive & negative values
 					float pL = 0f, nL = 0f, pR = 0f, nR = 0f;
-					for (int s = start; s < end; s += 2)
+					void FeedVector (out Vector4 v)
+					{
+						v.x = pL; v.z = pR;
+						v.y = nL; v.w = nR;
+					}
+
+					// Get highest / lowest samples
+					for (int s = start; s < end; s += 2 + skipMul)
 					{
 						if (s + 1 > samples.Length) break;
-
+						
 						float sL = samples[s];
 						if (sL > 0f) pL = (pL > sL ? pL : sL);
 						else		 nL = (nL < sL ? nL : sL);
-
+						
 						float sR = samples[s + 1];
 						if (sR > 0f) pR = (pR > sL ? pR : sR);
 						else		 nR = (nR < sL ? nR : sR);
 					}
-
-					var a = () =>
-					{
-						v.x = pL;
-
-					};
-
-					// Write L & R channels separately
-					waveform[i].x = pL; waveform[i].z = pR;
-					waveform[i].y = nL; waveform[i].w = nR;
+					FeedVector (out waveform[i]);
 				}
+				*/
 			}
 			// Create actual buffer
 			if (samplesBuffer == null || !samplesBuffer.IsValid ()
