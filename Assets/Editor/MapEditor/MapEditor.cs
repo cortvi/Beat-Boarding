@@ -206,23 +206,26 @@ namespace BeatBoarding.Tools
 				BuildBuffer ();
 		}
 
-		private void Awake () 
+		private void OnEnable () 
 		{
 			// Generate audio speaker
 			speaker = new GameObject(name, typeof(AudioSource)).GetComponent<AudioSource>();
 			speaker.gameObject.hideFlags = HideFlags.HideAndDontSave;
 			view.scrollSize = View.MaxScrollSize;
-		}
 
-		private void OnDestroy () 
+			// Clean resources before reloading scripts
+			AssemblyReloadEvents.beforeAssemblyReload += OnDisable;
+		}
+		private void OnDisable () 
 		{
 			// Release resources
-			view.buffer?.Release ();
-			DestroyImmediate (speaker.gameObject);
+			view.buffer?.Release();
+			if (speaker != null) DestroyImmediate(speaker.gameObject);
+			AssemblyReloadEvents.beforeAssemblyReload -= OnDisable;
 		}
 
 		#region Helpers
-		private void EventEditing (ref Map.Event e)
+		private void EventEditing (ref Map.Event e) 
 		{
 			EditorGUI.BeginChangeCheck ();
 
@@ -237,7 +240,7 @@ namespace BeatBoarding.Tools
 		{
 			var mouse = Event.current.mousePosition;
 			// Return horizontal value relative to Waveform-View rect
-			if (rect.Contains (mouse)) return (mouse.x - rect.xMin) / rect.width;
+			if (rect.Contains (mouse)) return Mathf.InverseLerp (rect.xMin, rect.xMax, mouse.x);
 			else return -1f;
 		}
 
