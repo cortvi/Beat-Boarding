@@ -13,6 +13,7 @@ public class lol : MonoBehaviour
 
     void Start()
     {
+		// lmaokai
         body = GetComponent<Rigidbody>();
 		audio = GetComponent<AudioSource>();
 

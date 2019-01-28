@@ -12,5 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 20fe3eae8ebf5e942957377653687ffe, type: 3}
   m_Name: lol
   m_EditorClassIdentifier: 
+  events: []
   song: {fileID: 8300000, guid: 51940a641b378fb42adedbd642c4c75c, type: 3}
-  bpm: 0
+  bpm: 146

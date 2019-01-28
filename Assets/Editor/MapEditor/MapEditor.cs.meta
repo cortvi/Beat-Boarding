@@ -4,7 +4,7 @@ MonoImporter:
   externalObjects: {}
   serializedVersion: 2
   defaultReferences:
-  - waveformMat: {fileID: 2100000, guid: 336786396112cc842a9ba24e81a219da, type: 2}
+  - material: {fileID: 2100000, guid: 336786396112cc842a9ba24e81a219da, type: 2}
   executionOrder: 0
   icon: {instanceID: 0}
   userData: 

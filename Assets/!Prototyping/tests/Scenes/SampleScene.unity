@@ -366,26 +366,6 @@ PrefabInstance:
       propertyPath: m_Name
       value: Cube (1)
       objectReference: {fileID: 0}
-    - target: {fileID: 7226260313911471564, guid: 7533a5cda5b31134c88c12d6771e71ed,
-        type: 3}
-      propertyPath: Mute
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7226260313911471564, guid: 7533a5cda5b31134c88c12d6771e71ed,
-        type: 3}
-      propertyPath: panLevelCustomCurve.m_Curve.Array.data[0].value
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7226260313911471564, guid: 7533a5cda5b31134c88c12d6771e71ed,
-        type: 3}
-      propertyPath: m_PlayOnAwake
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7226260313911471564, guid: 7533a5cda5b31134c88c12d6771e71ed,
-        type: 3}
-      propertyPath: m_audioClip
-      value: 
-      objectReference: {fileID: 8300000, guid: f64e415146ff3704183f07fa9d29d983, type: 3}
     - target: {fileID: 601303378629529504, guid: 7533a5cda5b31134c88c12d6771e71ed,
         type: 3}
       propertyPath: m_LocalPosition.x
@@ -450,11 +430,31 @@ PrefabInstance:
     - target: {fileID: 601303378629529532, guid: 7533a5cda5b31134c88c12d6771e71ed,
         type: 3}
       propertyPath: bpm
-      value: 186
+      value: 146
       objectReference: {fileID: 0}
     - target: {fileID: 1686283308, guid: 7533a5cda5b31134c88c12d6771e71ed, type: 3}
       propertyPath: m_IsKinematic
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 7226260313911471564, guid: 7533a5cda5b31134c88c12d6771e71ed,
+        type: 3}
+      propertyPath: Mute
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7226260313911471564, guid: 7533a5cda5b31134c88c12d6771e71ed,
+        type: 3}
+      propertyPath: panLevelCustomCurve.m_Curve.Array.data[0].value
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7226260313911471564, guid: 7533a5cda5b31134c88c12d6771e71ed,
+        type: 3}
+      propertyPath: m_PlayOnAwake
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7226260313911471564, guid: 7533a5cda5b31134c88c12d6771e71ed,
+        type: 3}
+      propertyPath: m_audioClip
+      value: 
+      objectReference: {fileID: 8300000, guid: 51940a641b378fb42adedbd642c4c75c, type: 3}
     m_RemovedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 7533a5cda5b31134c88c12d6771e71ed, type: 3}

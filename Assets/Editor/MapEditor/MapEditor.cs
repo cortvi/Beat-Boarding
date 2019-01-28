@@ -8,205 +8,314 @@ using System;
 
 namespace BeatBoarding.Tools 
 {
-	[CustomEditor (typeof (Map))]
-	public class MapEditor : Editor
+	public class MapEditor : EditorWindow 
 	{
 		#region Vars
 		private Map map;
-
 		private AudioSource speaker;
 
-		public Material waveformMat;
-		private ComputeBuffer samplesBuffer;
-		private bool rebuildBuffer;
+		private View view;
+		public Material material;
 
-		private float viewPos;
-		private float viewSize;
-		private float viewWidth;
-		private Rect viewRect;
-
-		private const int WaveformHeigth = 150;
-		private const float MinViewSize = 0.01f;
-		private const float MaxViewSize = 1.0f;
+		private int selectedBeat;
+		private int playbackBeat;
 		#endregion
 
-		public override void OnInspectorGUI () 
+		[MenuItem ("Window/Map Editor")]
+		public static void Init () 
 		{
-			float mouse = GetMouseInView ();
+			var win = GetWindow<MapEditor> ();
+			win.titleContent = new GUIContent ("Map Editor");
+			win.Show ();
+		}
+
+		private void OnGUI () 
+		{
+			map = Selection.activeObject as Map;
+			speaker.clip = map?.song;
+
+			if (map == null) return;
+			bool rebuildBuffer = false;
+			// ———
+
+			// Map settings
+			EditorGUILayout.LabelField ("Map settings: "+ map.name, EditorStyles.boldLabel);
 			EditorGUI.BeginChangeCheck ();
 
-			// Basic map info
-			EditorGUILayout.LabelField ("Map settings", EditorStyles.boldLabel);
-
 			var song = Extension.ObjectField (map.song, "Song");
-			uint bpm = (uint) EditorGUILayout.DelayedIntField ("Song BPM", map.bpm);
+			var bpm = (int) (uint) EditorGUILayout.IntField ("Song BPM", map.bpm);
 
-			if (map.song != null)
-			{
-				WaveformView ();
-				ViewScroll ();
-			}
-
-			#region TODO
-			//TO-DO: Beat overlay
-			//float beatTime = 1f / (bpm / 60f);
-			//float viewTime = viewSize * map.song.length;
-			//int viewBeatsAmount = Mathf.CeilToInt (viewTime * (bpm / 60f));
-			//
-			//for (int b = 0; b != viewBeatsAmount; ++b)
-			//{
-			//
-			//} 
-			#endregion
-
-			//TO-DO: Clicking utils
-			if (Event.current.type == EventType.MouseDown
-			&&	viewRect.Contains (Event.current.mousePosition))
-			{
-				float songFactor = (Event.current.mousePosition.x - viewRect.xMin) / viewRect.width;
-				speaker.time = (map.song.length * viewSize * songFactor) + (viewPos * map.song.length);
-				if (!speaker.isPlaying) speaker.Play ();
-			}
-
-			#region Track changes
+			#region Track settings changes
 			if (EditorGUI.EndChangeCheck ())
 			{
 				if (song != map.song)
 				{
-					if (song != null) rebuildBuffer = true;
-					else samplesBuffer?.Release ();
-					speaker.clip = map.song = song;
-				}
+					// Release buffer is song is removed
+					if (song == null) view.buffer?.Release ();
+					else rebuildBuffer = true;
 
-				if (bpm != map.bpm)
-				{
-					map.bpm = (int) bpm;
-					// Re-make beat-overlay???
+					// Save to asset & load on speaker
+					map.song = speaker.clip = song;
 				}
+				if (bpm != map.bpm) map.bpm = bpm;
+				EditorUtility.SetDirty (map);
 			}
 			#endregion
 
-			BuildBuffer();
+			if (map.song != null)
+			{
+				#region Waveform View
+				EditorGUILayout.Space ();
+				var rect = GUILayoutUtility.GetRect (0, View.Height, GUILayout.ExpandWidth (true));
+				if (rect.width > 1 && rect.width != view.width)
+				{
+					view.width = rect.width;
+					rebuildBuffer = true;
+				}
+				Graphics.DrawTexture (rect, Texture2D.whiteTexture, material);
+
+				// Get if mouse is inside Waveform rect
+				float mouse = GetMouseInView (rect);
+				#endregion
+
+				#region View scroll
+				float scroll = GUILayout.HorizontalScrollbar (view.scollPos, view.scrollSize, 0f, 1f);
+				if (view.scollPos != scroll)
+				{
+					view.scollPos = scroll;
+					rebuildBuffer = true;
+				}
+
+				// Allow zoom-in/-out
+				if (mouse >= 0f
+				&&	Event.current.type == EventType.ScrollWheel)
+				{
+					view.scrollSize += Event.current.delta.y * 0.01f;
+					view.scrollSize = Mathf.Clamp (view.scrollSize, View.MinScrollSize, View.MaxScrollSize);
+					rebuildBuffer = true;
+				}
+				float seconds = view.scrollSize * map.song.length;
+				float startTime = view.scollPos * map.song.length;
+				float endTime = (view.scollPos + view.scrollSize) * map.song.length;
+
+				// Feed view limits
+				if (rebuildBuffer)
+				{
+					material.SetFloat ("startTime", startTime);
+					material.SetFloat ("endTime", endTime);
+				}
+
+				// Small indicator of how many seconds I'm seeing
+				EditorGUILayout.LabelField ("Distance: " + seconds + " seconds.", EditorStyles.miniLabel);
+				#endregion
+
+				#region Beat overlay
+				float beatTime = 1f / (map.bpm / 60f);
+				int beatAmount = Mathf.FloorToInt (seconds / beatTime);
+				int firstBeat = Mathf.CeilToInt (startTime / beatTime);
+
+				var mark = new Rect (0, rect.yMin, 2f, rect.height);
+				for (int b=firstBeat; b!=firstBeat + beatAmount; ++b)
+				{
+					float pos = Mathf.InverseLerp (startTime, endTime, b * beatTime);
+					mark.x = Mathf.Lerp (rect.xMin, rect.xMax, pos);
+
+					Color color;
+					if (b == selectedBeat) color = Color.yellow;
+					else
+					if (b == playbackBeat)
+					{
+						color = Color.cyan;
+						color.a = 0.9f;
+					}
+					else
+					{
+						color = Color.white;
+						color.a = 0.2f;
+					}
+					// Draw beat marker
+					EditorGUI.DrawRect (mark, color);
+				}
+				// Draw outer view borders
+				GUI.DrawTexture (rect, Texture2D.whiteTexture, 0, false, 0, Color.black, borderWidth: 4, 0);
+
+				// Feed shader with playback info
+				if (speaker.isPlaying)
+				{
+					material.SetFloat ("playbackPos", speaker.time);
+					playbackBeat = Mathf.FloorToInt (speaker.time / beatTime);
+					Repaint ();
+				}
+				#endregion
+
+				#region Controls
+				if (mouse >= 0f
+				&&	Event.current.type == EventType.MouseDown)
+				{
+					// Right click
+					if (Event.current.button == 0)
+					{
+						float clickTime = Mathf.Lerp (startTime, endTime, mouse);
+						selectedBeat = Mathf.RoundToInt (clickTime / beatTime);
+						Repaint ();
+					}
+					else
+					// Left click
+					if (Event.current.button == 1)
+					{
+						if (!speaker.isPlaying)
+						{
+							float pos = selectedBeat * beatTime;
+							material.SetFloat ("playbackStart", pos);
+
+							speaker.Play ();
+							speaker.time = pos;
+						}
+						else
+						{
+							material.SetFloat ("playbackStart", 0f);
+							material.SetFloat ("playbackPos", 0f);
+							speaker.Stop ();
+							Repaint ();
+						}
+					}
+					GUI.FocusControl (null);
+				}
+				#endregion
+
+				#region Edit events
+				// Make sure Maps has same amout of events as beats in the song
+				int songBeats = Mathf.FloorToInt (map.song.length / beatTime);
+				if (map.events.Length != songBeats)
+				{
+					var list = new Map.Event[songBeats];
+					for (int i = 0; (i != list.Length && i != map.events.Length); ++i)
+					{
+						// Don't waste previous events
+						list[i] = map.events[i];
+					}
+					map.events = list;
+				}
+				// Edit current beat event
+				EventEditing (ref map.events[selectedBeat]);
+				#endregion
+			}
+
+			// Rebuild samples buffer on demand
+			if (rebuildBuffer || view.buffer == null)
+				BuildBuffer ();
 		}
 
 		private void Awake () 
 		{
-			// Initialize stuff
-			map = target as Map;
-			viewSize = 0.30f;
-
 			// Generate audio speaker
 			speaker = new GameObject(name, typeof(AudioSource)).GetComponent<AudioSource>();
 			speaker.gameObject.hideFlags = HideFlags.HideAndDontSave;
-			speaker.clip = map.song;
+			view.scrollSize = View.MaxScrollSize;
 		}
 
 		private void OnDestroy () 
 		{
 			// Release resources
-			samplesBuffer?.Release ();
+			view.buffer?.Release ();
 			DestroyImmediate (speaker.gameObject);
 		}
 
-		#region UI
-		private void WaveformView () 
-		{
-			viewRect = GUILayoutUtility.GetRect (0, WaveformHeigth, GUILayout.ExpandWidth (true));
-			if (viewRect.width > 1 && viewRect.width != viewWidth)
-			{
-				waveformMat.SetFloat ("viewWidth", viewRect.size.x);
-				viewWidth = viewRect.width;
-				rebuildBuffer = true;
-			}
-			Graphics.DrawTexture (viewRect, Texture2D.whiteTexture, waveformMat);
-			GUI.DrawTexture (viewRect, Texture2D.whiteTexture, 0, false, 0, Color.black, 3, 0);
-		}
-
-		private void ViewScroll () 
-		{
-			float scroll = GUILayout.HorizontalScrollbar (viewPos, viewSize, 0f, 1f);
-			if (viewPos != scroll)
-			{
-				viewPos = scroll;
-				rebuildBuffer = true;
-			}
-
-			// Allow zoom-in/out
-			if (Event.current.type == EventType.ScrollWheel
-			&& viewRect.Contains (Event.current.mousePosition))
-			{
-				viewSize += Event.current.delta.y * 0.01f;
-				viewSize = Mathf.Clamp (viewSize, MinViewSize, MaxViewSize);
-				rebuildBuffer = true;
-			}
-
-			// Small indicator of how many seconds I'm seeing
-			EditorGUILayout.LabelField ("Distance: " + viewSize * map.song.length + " seconds.", EditorStyles.miniLabel);
-		}
-		#endregion
-
 		#region Helpers
-		private float GetMouseInView () 
+		private void EventEditing (ref Map.Event e)
+		{
+			EditorGUI.BeginChangeCheck ();
+
+			if (EditorGUI.EndChangeCheck ())
+			{
+
+				EditorUtility.SetDirty (map);
+			}
+		}
+
+		private float GetMouseInView (Rect rect) 
 		{
 			var mouse = Event.current.mousePosition;
-			// Return horizontal value relative to preview box
-			if (viewRect.Contains (mouse)) return (mouse.x - viewRect.xMin) / viewRect.width;
+			// Return horizontal value relative to Waveform-View rect
+			if (rect.Contains (mouse)) return (mouse.x - rect.xMin) / rect.width;
 			else return -1f;
 		}
 
 		private void BuildBuffer () 
 		{
-			// Ensure a song is selected & avoid rebulding when repainting
-			if (map.song == null || Event.current.type == EventType.Repaint) return;
-			// Pass only if demanded rebuilding or if it's null
-			if (!rebuildBuffer && samplesBuffer != null) return;
-			if (viewWidth < 1f) return;
+			if (Event.current.type == EventType.Repaint
+			||	map.song == null || view.width <= 1f) return;
+			// ———
 
+			#region Compute values
 			// Ensure we start on a L-channel sample
-			int offset = (int)(map.song.samples * viewPos);
-			if (offset % 2 != 0) offset++;
+			int offset = (int)(map.song.samples * view.scollPos);
+			if (offset % 2 != 0) offset--;
 
-			// Compute view limits, in sample amounts
-			int samplesAmount = (int) (map.song.samples * viewSize);
-			int samplesXpixel = (int) ((samplesAmount * 2) / viewWidth);
+			// Compute view limits, in number of samples
+			int samplesAmount = (int)(map.song.samples * view.scrollSize);
+
+			// Compute how many samples per bar
+			int barAmount = (int)(view.width / 4f);
+			material.SetFloat ("barAmount", barAmount);
+			int samplesXbar = (samplesAmount * 2) / barAmount;
 
 			// Get actual audio data
 			float[] samples = new float[samplesAmount * 2];
 			map.song.GetData (samples, offset);
 
-			var waveform = new Vector4[(int) viewWidth];
-			unchecked
+			var waveform = new Vector4[barAmount];
+			// Skip samples based on amount of them to allow basic performance
+			int skipMul = 2 * (samplesAmount / (44100));
+			#endregion
+
+			#region Read all samples
+			int barStart = 0, barEnd = samplesXbar;
+			for (int b = 0; b != waveform.Length; ++b)
 			{
-				// Skip samples based on amount of them to allow basic performance
-				int skipMul = (int) (2d * (samplesAmount / 44100));
-				for (int s = 0; s < samples.Length; s += 2 * skipMul)
+				var bar = waveform[b];
+				barEnd = samplesXbar * b;
+				for (int s = barStart; (s < barEnd && s + 1 < samples.Length); s += 2 * skipMul)
 				{
-					if (s + 1 >= samples.Length) break;
-					int id = (int) Mathf.Clamp (Mathf.Floor (s / samplesXpixel), 0f, viewWidth - 1);
-					var col = waveform[id];
-
 					float sL = samples[s];
-					if (sL > 0f) col.x = (col.x > sL ? col.x : sL);
-					else		 col.y = (col.y < sL ? col.y : sL);
-						
-					float sR = samples[s + 1];
-					if (sR > 0f) col.z = (col.z > sL ? col.z : sR);
-					else		 col.w = (col.w < sL ? col.w : sR);
+					if (sL > 0f) bar.x = (bar.x > sL ? bar.x : sL);
+					else bar.y = (bar.y < sL ? bar.y : sL);
 
-					waveform[id] = col;
+					float sR = samples[s + 1];
+					if (sR > 0f) bar.z = (bar.z > sL ? bar.z : sR);
+					else bar.w = (bar.w < sL ? bar.w : sR);
 				}
-			}
+				waveform[b] = bar;
+				barStart = barEnd;
+			} 
+			#endregion
+
 			// Create actual buffer
-			if (samplesBuffer == null || !samplesBuffer.IsValid ()
-			||	samplesBuffer.count != waveform.Length)
+			if (view.buffer == null || !view.buffer.IsValid ()
+			||	view.buffer.count != waveform.Length)
 			{
-				samplesBuffer?.Dispose ();
-				samplesBuffer = new ComputeBuffer (waveform.Length, 4 * sizeof (float));
+				view.buffer?.Dispose ();
+				view.buffer = new ComputeBuffer (waveform.Length, 4 * sizeof (float));
 			}
 			// Feed the shader
-			samplesBuffer.SetData (waveform);
-			waveformMat.SetBuffer ("waveform", samplesBuffer);
+			view.buffer.SetData (waveform);
+			material.SetBuffer ("waveform", view.buffer);
+
+			Repaint ();
 		}
 		#endregion
+
+		private struct View 
+		{
+			public float width;
+			public ComputeBuffer buffer;
+
+			public float scollPos;
+			public float scrollSize;
+
+			public const int Height = 150;
+			public const float MinScrollSize = 0.05f;
+			public const float MaxScrollSize = 0.40f;
+		}
 	}
 }
